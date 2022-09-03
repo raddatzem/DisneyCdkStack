@@ -1,6 +1,14 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import {aws_cognito, Duration} from 'aws-cdk-lib';
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaNodeJs from "aws-cdk-lib/aws-lambda-nodejs";
+import * as path from 'path';
+import {HttpMethod} from '@aws-cdk/aws-apigatewayv2-alpha';
+import * as apiGatewayIntegrations from '@aws-cdk/aws-apigatewayv2-integrations-alpha';
+import * as apiGateway from '@aws-cdk/aws-apigatewayv2-alpha';
+import * as apiGatewayAuthorizers from '@aws-cdk/aws-apigatewayv2-authorizers-alpha';
+
 
 interface DisneyStackProps extends cdk.StackProps{
   deploymentEnvironment: 'alpha' | 'prod'
@@ -74,6 +82,98 @@ export class DisneyCdkStack extends cdk.Stack {
       aws_cognito.UserPoolClientIdentityProvider.COGNITO,
     ],
   });
+
+/////start lambda funtion logic
+  const getNewsLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `getNews-handler`, {
+    runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
+    entry: path.join(__dirname, `/../lambda/get_news.ts`),
+    handler: "main",
+    environment: {
+      //@ts-ignore
+      API_KEY: process.env.API_KEY
+    },
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(5),
+    functionName: `getNews-function`
+  });
+  const getCruiseLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `getCruise-handler`, {
+    runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
+    entry: path.join(__dirname, `/../lambda/get_cruise.ts`),
+    handler: "main",
+    environment: {
+      //@ts-ignore
+      API_KEY: process.env.API_KEY
+    },
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(5),
+    functionName: `getCruise-function`
+  });
+  const getWorldLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `getWorld-handler`, {
+    runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
+    entry: path.join(__dirname, `/../lambda/get_dworld.ts`),
+    handler: "main",
+    environment: {
+      //@ts-ignore
+      API_KEY: process.env.API_KEY
+    },
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(5),
+    functionName: `getWorld-function`
+  });
+
+  const api = new apiGateway.HttpApi(this, `get-news-api`, {
+    apiName: "get_news_api",
+    description: `Get News API`,
+  });
+
+   // 👇 create the Authorizer
+   const authorizer = new apiGatewayAuthorizers.HttpUserPoolAuthorizer(
+    `${userPoolName}-authorizer`,
+    userPool,
+    {
+      userPoolClients: [userPoolClient],
+      identitySource: ['$request.header.Authorization'],
+    },
+  );
+
+
+
+  api.addRoutes({
+    integration: new apiGatewayIntegrations.HttpLambdaIntegration(
+      `get-news-api`,
+      getNewsLambdaFunction,
+    ),
+    path: '/get-news-api',
+    //authorizer, Do not need authorizer
+    methods: [HttpMethod.GET]
+  });
+  api.addRoutes({
+    integration: new apiGatewayIntegrations.HttpLambdaIntegration(
+      `get-disney-cruise-news`,
+      getCruiseLambdaFunction,
+    ),
+    path: '/get-disney-cruise-news',
+    //authorizer, Do not need authorizer
+    methods: [HttpMethod.GET]
+  });
+  api.addRoutes({
+    integration: new apiGatewayIntegrations.HttpLambdaIntegration(
+      `get-disney-world-news`,
+      getWorldLambdaFunction,
+    ),
+    path: '/get-disney-world-news',
+    //authorizer, Do not need authorizer
+    methods: [HttpMethod.GET]
+  });
+
+
+  new cdk.CfnOutput(this, 'apiUrl', {
+    value: api.url!
+  })
+
+//////////////////////////////////////////////////////////////////////
+
+
 
   new cdk.CfnOutput(this, 'region', {value: cdk.Stack.of(this).region});
   new cdk.CfnOutput(this, 'userPoolId', {value: userPool.userPoolId});
