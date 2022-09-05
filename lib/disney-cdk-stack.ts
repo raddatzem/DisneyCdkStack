@@ -8,6 +8,7 @@ import {HttpMethod} from '@aws-cdk/aws-apigatewayv2-alpha';
 import * as apiGatewayIntegrations from '@aws-cdk/aws-apigatewayv2-integrations-alpha';
 import * as apiGateway from '@aws-cdk/aws-apigatewayv2-alpha';
 import * as apiGatewayAuthorizers from '@aws-cdk/aws-apigatewayv2-authorizers-alpha';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 
 
 interface DisneyStackProps extends cdk.StackProps{
@@ -83,6 +84,26 @@ export class DisneyCdkStack extends cdk.Stack {
     ],
   });
 
+////////////start dynamodB ////////////
+
+const table = new dynamodb.Table(this, "disneyNewsTable", {
+  partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+  billingMode: dynamodb.BillingMode.PROVISIONED,
+  readCapacity: 5,
+  writeCapacity: 5,
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
+  sortKey: {name: 'SK', type: dynamodb.AttributeType.NUMBER},
+  pointInTimeRecovery: true,
+  tableClass: dynamodb.TableClass.STANDARD
+});
+
+//////////////////////////
+
+
+
+
+
+
 /////start lambda funtion logic
   const getNewsLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `getNews-handler`, {
     runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
@@ -135,7 +156,7 @@ export class DisneyCdkStack extends cdk.Stack {
       identitySource: ['$request.header.Authorization'],
     },
   );
-  ////////////////////////////////////////////
+  ////////////////POST////////////////////////////
 
   const postNewsLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `postNews-handler`, {
     runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
@@ -143,25 +164,63 @@ export class DisneyCdkStack extends cdk.Stack {
     handler: "main",
     environment: {
       //@ts-ignore
-      API_KEY: process.env.API_KEY
+      TABLE: table.tableName
     },
     memorySize: 1024,
     timeout: cdk.Duration.seconds(5),
     functionName: `postNews-function`
   });
-//////////////////???????????
-
+//////////////////
+table.grantReadWriteData(postNewsLambdaFunction);
+///////////////////
 api.addRoutes({
   integration: new apiGatewayIntegrations.HttpLambdaIntegration(
     `post-news-api`,
     postNewsLambdaFunction,
   ),
   path: '/post-news-api',
-  //authorizer, Do not need authorizer
+  authorizer,
   methods: [HttpMethod.POST]
 });
 
-/////////////////////////////////////////////////////
+/////////////////END POST////////////////////////////////////
+
+
+
+
+
+
+const getUserNewsLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `get-User-News-handler`, {
+  runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
+  entry: path.join(__dirname, `/../lambda/get_articles.ts`),
+  handler: "main",
+  environment: {
+    //@ts-ignore
+    TABLE: table.tableName
+  },
+  memorySize: 1024,
+  timeout: cdk.Duration.seconds(5),
+  functionName: `getUserNews-function`
+});
+
+
+
+table.grantReadWriteData(getUserNewsLambdaFunction);
+///////////////////
+api.addRoutes({
+  integration: new apiGatewayIntegrations.HttpLambdaIntegration(
+    `get-user-news-api`,
+    getUserNewsLambdaFunction,
+  ),
+  path: '/get-user-news',
+  methods: [HttpMethod.GET]
+});
+
+
+
+
+
+///////////////////////
   api.addRoutes({
     integration: new apiGatewayIntegrations.HttpLambdaIntegration(
       `get-news-api`,
