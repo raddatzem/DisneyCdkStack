@@ -121,12 +121,12 @@ export class DisneyCdkStack extends cdk.Stack {
     functionName: `getWorld-function`
   });
 
-  const api = new apiGateway.HttpApi(this, `get-news-api`, {
-    apiName: "get_news_api",
-    description: `Get News API`,
+  const api = new apiGateway.HttpApi(this, `news-api`, {
+    apiName: "news_api",
+    description: `News API`,
   });
 
-   // 👇 create the Authorizer
+   ////////// 👇 create the Authorizer //////////////
    const authorizer = new apiGatewayAuthorizers.HttpUserPoolAuthorizer(
     `${userPoolName}-authorizer`,
     userPool,
@@ -135,9 +135,33 @@ export class DisneyCdkStack extends cdk.Stack {
       identitySource: ['$request.header.Authorization'],
     },
   );
+  ////////////////////////////////////////////
 
+  const postNewsLambdaFunction = new lambdaNodeJs.NodejsFunction(this, `postNews-handler`, {
+    runtime: lambda.Runtime.NODEJS_16_X, // So we can use async in widget.js
+    entry: path.join(__dirname, `/../lambda/post_news.ts`),
+    handler: "main",
+    environment: {
+      //@ts-ignore
+      API_KEY: process.env.API_KEY
+    },
+    memorySize: 1024,
+    timeout: cdk.Duration.seconds(5),
+    functionName: `postNews-function`
+  });
+//////////////////???????????
 
+api.addRoutes({
+  integration: new apiGatewayIntegrations.HttpLambdaIntegration(
+    `post-news-api`,
+    postNewsLambdaFunction,
+  ),
+  path: '/post-news-api',
+  //authorizer, Do not need authorizer
+  methods: [HttpMethod.POST]
+});
 
+/////////////////////////////////////////////////////
   api.addRoutes({
     integration: new apiGatewayIntegrations.HttpLambdaIntegration(
       `get-news-api`,
